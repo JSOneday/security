@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project-module
+  type="WEB"
+  name="security"
+  id="myeclipse.1337666531796"
+  context-root="/security"
+  j2ee-spec="5.0"
+  archive="security.war">
+  <attributes>
+    <attribute name="webrootdir" value="WebRoot" />
+  </attributes>
+</project-module>
+

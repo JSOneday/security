@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans" 
+	xmlns:beans="http://www.springframework.org/schema/beans"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:sec="http://www.springframework.org/schema/security"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+			http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+           http://www.springframework.org/schema/security
+           http://www.springframework.org/schema/security/spring-security-3.0.xsd
+           http://www.springframework.org/schema/context
+		   http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+	<context:annotation-config/>
+	<bean id="securityFilter" class="org.springframework.security.web.FilterChainProxy">
+		<sec:filter-chain-map path-type="ant">
+		<sec:filter-chain pattern="/**" filters="
+			securityContextPersistenceFilter,
+			logoutFilter,
+			usernamePasswordAuthenticationFilter,
+			rememberMeAuthenticationFilter,
+			anonymousAuthenticationFilter,
+			exceptionTranslationFilter,
+			filterSecurityInterceptor" />
+		</sec:filter-chain-map>
+	</bean>
+	
+	<!-- securityContextPersistenceFilter -->
+	<bean id="securityContextPersistenceFilter" 
+		class="org.springframework.security.web.context.SecurityContextPersistenceFilter"/>
+	
+	<!--logoutFilter-->
+	<bean id="logoutFilter" class="org.springframework.security.web.authentication.logout.LogoutFilter">
+		<!-- the post-logout destination -->
+		<constructor-arg value="/"/>
+		<constructor-arg>
+			<list>
+				<bean class="org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler"/>
+				<ref bean="rememberMeServices"/>
+			</list>
+		</constructor-arg>
+		<property name="filterProcessesUrl" value="/logout"/>
+	</bean>
+	
+	<!-- rememberMeAuthenticationFilter -->
+	<bean id="rememberMeAuthenticationFilter"
+		class="org.springframework.security.web.authentication.rememberme.RememberMeAuthenticationFilter">
+		<property name="rememberMeServices" ref="rememberMeServices"/>
+		<property name="authenticationManager" ref="customAuthenticationManager" />
+	</bean>
+	
+	<bean id="rememberMeServices"
+		class="org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices">
+		<property name="key" value="jbcpPetStore"/>
+		<property name="tokenValiditySeconds" value="3600"/>
+		<property name="tokenRepository" ref="jdbcRememberMeTokenRepository"/>
+		<property name="userDetailsService" ref="jdbcUserService"/>
+	</bean>
+	<bean id="jdbcUserService" class="com.oneday.service.impl.MyUserDetailService" />
+	
+	<bean id="jdbcRememberMeTokenRepository"
+		class="org.springframework.security.web.authentication.rememberme.JdbcTokenRepositoryImpl">
+		<property name="dataSource" ref="dataSource"/>
+	</bean>
+	
+	<bean id="rememberMeAuthenticationProvider"
+		class="org.springframework.security.authentication.RememberMeAuthenticationProvider">
+		<property name="key" value="jbcpPetStore"/>
+	</bean>
+	<bean id="customAuthenticationManager"
+		class="org.springframework.security.authentication.ProviderManager">
+		<property name="authenticationEventPublisher" ref="defaultAuthEventPublisher"/>
+		<property name="providers">
+			<list>
+				<ref bean="daoAuthenticationProvider"/>
+				<ref bean="anonymousAuthenticationProvider"/>
+				<ref bean="rememberMeAuthenticationProvider"/>
+			</list>
+		</property>
+	</bean>
+	
+	<bean id="defaultAuthEventPublisher"
+		class="org.springframework.security.authentication.DefaultAuthenticationEventPublisher"/>
+	
+	
+	<!-- usernamePasswordAuthenticationFilter -->
+	<bean id="usernamePasswordAuthenticationFilter"
+		class="org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter">
+		<property name="authenticationManager" ref="customAuthenticationManager"/>
+		<property name="rememberMeServices" ref="rememberMeServices"/>
+	</bean>
+	
+	<!--exceptionTranslationFilter-->
+	<bean id="exceptionTranslationFilter"
+		class="org.springframework.security.web.access.ExceptionTranslationFilter">
+		<property name="authenticationEntryPoint" ref="authenticationEntryPoint"/>
+		<property name="accessDeniedHandler" ref="accessDeniedHandler"/>
+	</bean>
+	
+	<bean id="authenticationEntryPoint"
+		class="org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint">
+		<property name="loginFormUrl" value="/login.do"/>
+	</bean>
+	<bean id="accessDeniedHandler"
+		class="org.springframework.security.web.access.AccessDeniedHandlerImpl">
+		<property name="errorPage" value="/accessDenied.do"/>
+	</bean>
+	
+	<!-- 这几个什么用 -->
+	<bean class="org.springframework.security.web.access.expression.DefaultWebSecurityExpressionHandler"
+		id="expressionHandler"/>
+	<bean class="org.springframework.security.web.access.expression.WebExpressionVoter" id="expressionVoter">
+		<property name="expressionHandler" ref="expressionHandler"/>
+	</bean>
+	<bean class="org.springframework.security.access.vote.AffirmativeBased"
+		id="affirmativeBased">
+		<property name="decisionVoters">
+			<list>
+				<ref bean="expressionVoter"/>
+			</list>
+		</property>
+	</bean>
+	
+	<!-- anonymousAuthenticationFilter -->
+	<bean id="anonymousAuthenticationFilter"
+		class="org.springframework.security.web.authentication.AnonymousAuthenticationFilter">
+		<property name="userAttribute" value="anonymousUser,ROLE_ANONYMOUS"/>
+		<property name="key" value="BF93JFJ091N00Q7HF"/>
+	</bean>
+	
+	<!--filterSecurityInterceptor-->
+	<bean id="filterSecurityInterceptor"
+		class="org.springframework.security.web.access.intercept.FilterSecurityInterceptor">
+		<property name="authenticationManager" ref="customAuthenticationManager"/>
+		<property name="accessDecisionManager" ref="affirmativeBased"/>
+		<property name="securityMetadataSource">
+			<sec:filter-security-metadata-source>
+				<sec:intercept-url pattern="/index.jsp" access="hasRole('ROLE_ANONYMOUS')" />
+				<sec:intercept-url pattern="/login.jsp" access="hasRole('ROLE_USER','ROLE_ADMIN')"/>
+				<sec:intercept-url pattern="/admin.jsp" access="hasRole('ROLE_ADMIN')"/>
+				<sec:intercept-url pattern="/user.jsp" access="hasRole('ROLE_USER')"/>
+			</sec:filter-security-metadata-source>
+		</property>
+	</bean>
+	
+</beans>

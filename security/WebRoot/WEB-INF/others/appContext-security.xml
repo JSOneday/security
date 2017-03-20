@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:sec="http://www.springframework.org/schema/security"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+			http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+			http://www.springframework.org/schema/security http://www.springframework.org/schema/security/spring-security-3.2.xsd
+			http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+	
+	<!-- 
+		Spring Security已经定义了一些Filter，不管实际应用中你用到了哪些，它们应当保持如下顺序。
+	
+	       （1）ChannelProcessingFilter，如果你访问的channel错了，那首先就会在channel之间进行跳转，如http变为https。
+	
+	       （2）SecurityContextPersistenceFilter，这样的话在一开始进行request的时候就可以在SecurityContextHolder中建立一个SecurityContext，然后在请求结束的时候，任何对SecurityContext的改变都可以被copy到HttpSession。
+	
+	       （3）ConcurrentSessionFilter，因为它需要使用SecurityContextHolder的功能，而且更新对应session的最后更新时间，以及通过SessionRegistry获取当前的SessionInformation以检查当前的session是否已经过期，过期则会调用LogoutHandler。
+	
+	       （4）认证处理机制，如UsernamePasswordAuthenticationFilter，CasAuthenticationFilter，BasicAuthenticationFilter等，以至于SecurityContextHolder可以被更新为包含一个有效的Authentication请求。
+	
+	       （5）SecurityContextHolderAwareRequestFilter，它将会把HttpServletRequest封装成一个继承自HttpServletRequestWrapper的SecurityContextHolderAwareRequestWrapper，同时使用SecurityContext实现了HttpServletRequest中与安全相关的方法。
+	
+	       （6）JaasApiIntegrationFilter，如果SecurityContextHolder中拥有的Authentication是一个JaasAuthenticationToken，那么该Filter将使用包含在JaasAuthenticationToken中的Subject继续执行FilterChain。
+	
+	       （7）RememberMeAuthenticationFilter，如果之前的认证处理机制没有更新SecurityContextHolder，并且用户请求包含了一个Remember-Me对应的cookie，那么一个对应的Authentication将会设给SecurityContextHolder。
+	
+	       （8）AnonymousAuthenticationFilter，如果之前的认证机制都没有更新SecurityContextHolder拥有的Authentication，那么一个AnonymousAuthenticationToken将会设给SecurityContextHolder。
+	
+	       （9）ExceptionTransactionFilter，用于处理在FilterChain范围内抛出的AccessDeniedException和AuthenticationException，并把它们转换为对应的Http错误码返回或者对应的页面。
+	
+	       （10）FilterSecurityInterceptor，保护Web URI，并且在访问被拒绝时抛出异常。
+	
+	 -->
+	<!-- ======================== FILTER CHAIN ======================= -->
+	<!--http://elim.iteye.com/blog/2155786 Spring Security博客-->
+	<context:annotation-config/>
+	<bean id="securityFilter" class="com.gewara.web.filter.GewaFilterChainProxy">
+		<!-- <property name="filterUrlMap">
+			<map>
+				<entry key="/admin/" value="1"/>
+				<entry key="/home/" value="2"/>
+				<entry key="/cas/" value="3"/>
+			</map>
+		</property> -->
+		<sec:filter-chain-map  request-matcher="ant">
+			<sec:filter-chain pattern="/**" filters="securityContextPersistenceFilter,logoutFilter,authenticationFilter,securityContextHolderAwareRequestFilter,exceptionTranslationFilter,filterSecurityInterceptor"/>
+		</sec:filter-chain-map>
+	</bean>
+	<!--1.1-->
+	<bean id="securityContextRepository" class="com.gewara.web.support.GewaSecurityContextRepository" />
+	<!-- 1 -->
+	<!-- 用来建立 SecurityContext,而它被用来贯穿整个 request 过程以跟踪请求者的认证信息。SecurityContext代表了用户 安 全和认证过的 session 。 -->
+	<bean id="securityContextPersistenceFilter" class="org.springframework.security.web.context.SecurityContextPersistenceFilter">
+		<property name="securityContextRepository" ref="securityContextRepository" />
+	</bean>
+	<!-- 2 -->
+	<!-- 监控一个实际为退出功能的 URL（默认为/j_spring_security_logout），并且在匹配的时候完成用户的退出功能。 -->
+	<bean id="logoutFilter" class="org.springframework.security.web.authentication.logout.LogoutFilter">
+		<constructor-arg ref="gewaLogoutHandler" />
+		<constructor-arg>
+			<list>
+				<!--属性:invalidateHttpSession 默认值:true -->
+				<bean class="org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler" />
+			</list>
+		</constructor-arg>
+		<property name="filterProcessesUrl" value="/cas/logout.xhtml" />
+	</bean>
+	<!--2.1-->
+	<bean id="gewaLogoutHandler" class="com.gewara.gptbs.web.support.GewaGptbsUrlLogoutSuccessHandler">
+		<property name="defaultTargetUrl" value="/tbs/index.xhtml"/>
+		<property name="casSsoLogout" value="false"/>
+	</bean>
+	<!--3-->
+	<!-- UsernamePasswordAuthenticationFilter -->
+	<!--监控一个使用用户名和密码基于 form 认证的URL （默认为/j_spring_security_check），并在 URL
+		匹配的情况下尝试认证该用户。-->
+	<bean id="authenticationFilter" class="com.gewara.gptbs.web.filter.TbGewaAuthenticationFilter">
+		<property name="authenticationManager" ref="authenticationManager" />
+		<property name="authenticationSuccessHandler" ref="successHandler" />
+		<property name="authenticationFailureHandler" ref="failureHandler" />
+		<!-- 提交表单地址 -->
+		<property name="filterProcessesUrl" value="/cas/check_user.xhtml" />
+		<property name="allowSessionCreation" value="false" />
+	</bean>
+	<!--3.2-->
+	<!-- SimpleUrlAuthenticationSuccessHandler-->
+	<bean id="successHandler" class="com.gewara.gptbs.web.support.GewaGptbsAuthenticationSuccessHandler">
+		<property name="defaultTargetUrl" value="/tbs/index.xhtml" />
+		<property name="alwaysUseDefaultTargetUrl" value="false"/>
+		<property name="targetUrlParameter" value="TARGETURL" />
+		<property name="redirectStrategy" ref="redirectStrategy" />
+		<property name="cacheService" ref="cacheService" />
+		<property name="relogin" value="true" />
+		<property name="httpOnly" value="false"/>
+	</bean>
+	<!--3.3-->
+	<!--AuthenticationFailureHandler-->
+	<bean id="failureHandler" class="com.gewara.gptbs.web.support.GewaGptbsAuthenticationFailureHandler">
+		<property name="defaultFailureUrl" value="/login.xhtml" />
+		<property name="targetUrlParameter" value="TARGETURL" />
+		<property name="loginFromParameter" value="ptn" />
+		<property name="failureUrlMap">
+			<map>
+				<entry key="user" value="/adminLogin.xhtml"/>
+				<!--登录测试-->
+				<entry key="member" value="/memberLogin.xhtml"/>
+			</map>
+		</property>
+	</bean>
+	<!--3.2.4-->
+	<!--RedirectStrategy -->
+	<bean id="redirectStrategy" class="com.gewara.web.support.GewaRedirectStrategy">
+		<property name="contextRelative" value="true"/>
+	</bean>
+	<!--4-->
+	<!-- 用一个扩展了 HttpServletRequestWrapper 的子类（ o.s.s.web.servletapi.SecurityContextHolderAwareRequestWrapper）
+		   包装 HttpServletRequest。它为请求处理器提供了额外的上下文信息。 -->
+	<bean id="securityContextHolderAwareRequestFilter" class="org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter" />
+	<!-- 5 -->
+	<!--解决在处理一个请求时产生的指定异常 -->
+	<!-- 
+		   如果用户直接访问登录页面，那么认证过程跟上节描述的基本一致，只是在认证完成后将跳转到指定的成功页面，默认是应用的根路径。
+		   如果用户直接访问一个受保护的资源，那么认证过程将如下：
+       1、引导用户进行登录，通常是重定向到一个基于form表单进行登录的页面，具体视配置而定。
+
+       2、用户输入用户名和密码后请求认证，后台还是会像上节描述的那样获取用户名和密码封装成一个UsernamePasswordAuthenticationToken对象，
+       	    然后把它传递给AuthenticationManager进行认证。
+
+       3、如果认证失败将继续执行步骤1，如果认证成功则会保存返回的Authentication到SecurityContext，然后默认会将用户重定向到之前访问的页面。
+
+       4、用户登录认证成功后再次访问之前受保护的资源时就会对用户进行权限鉴定，如不存在对应的访问权限，则会返回403错误码。
+     	    在上述步骤中将有很多不同的类参与，但其中主要的参与者是ExceptionTranslationFilter。
+	 -->
+	<!-- 
+		  ExceptionTranslationFilter是用来处理来自AbstractSecurityInterceptor抛出的AuthenticationException和AccessDeniedException的。
+	 -->
+	<bean id="exceptionTranslationFilter" class="org.springframework.security.web.access.ExceptionTranslationFilter">
+		<constructor-arg>
+			<bean class="com.gewara.gptbs.web.support.GptbsLoginUrlAuthenticationEntryPoint">
+				<constructor-arg value="/login.xhtml" />
+				<property name="loginFormMap">
+					<map>
+						<entry key="/gptbs/admin/" value="/adminLogin.xhtml"/>
+					</map>
+				</property>
+				<property name="enableSSO" value="false"/>
+				<property name="targetUrlParameter" value="TARGETURL" />
+			</bean>
+		</constructor-arg>
+		<property name="accessDeniedHandler">
+			<bean class="org.springframework.security.web.access.AccessDeniedHandlerImpl" />
+		</property>
+		<property name="requestCache">
+			<bean class="org.springframework.security.web.savedrequest.NullRequestCache" />
+		</property>
+	</bean>
+	<!--6.3-->
+	<bean id="securityMetadataSource"
+		class="com.gewara.web.support.DBFilterInvocationSecurityMetadataSource" />
+	
+	<!--6-->
+	<!-- 
+		AbstractSecurityInterceptor是Spring Security用于拦截请求进行权限鉴定的，其拥有两个具体的子类，
+		拦截方法调用的MethodSecurityInterceptor和拦截URL请求的FilterSecurityInterceptor。
+		当ExceptionTranslationFilter捕获到的是AuthenticationException时将调用AuthenticationEntryPoint引导用户进行登录；
+		如果捕获的是AccessDeniedException，但是用户还没有通过认证，
+		则调用AuthenticationEntryPoint引导用户进行登录认证，否则将返回一个表示不存在对应权限的403错误码。
+	 -->
+	<bean id="filterSecurityInterceptor"
+		class="org.springframework.security.web.access.intercept.FilterSecurityInterceptor">
+		<!--
+			AuthenticationManager是一个用来处理认证（Authentication）请求的接口。
+			在其中只定义了一个方法authenticate()，该方法只接收一个代表认证请求的Authentication对象作为参数，
+			如果认证成功，则会返回一个封装了当前用户权限等信息的Authentication对象进行返回。
+			 在Spring Security中，AuthenticationManager的默认实现是ProviderManager
+		-->
+		<property name="authenticationManager" ref="authenticationManager" />
+		<property name="accessDecisionManager" ref="accessDecisionManager" />
+		<property name="securityMetadataSource" ref="securityMetadataSource" />
+	</bean>
+	<!--6.2.2-->
+	<bean id="roleVoter" class="org.springframework.security.access.vote.RoleVoter">
+		<property name="rolePrefix" value="" />
+	</bean>
+	<!--6.2-->
+	<bean id="accessDecisionManager"
+		class="org.springframework.security.access.vote.AffirmativeBased">
+		<property name="allowIfAllAbstainDecisions" value="true" />
+		<property name="decisionVoters">
+			<list><ref bean="roleVoter"/></list>
+		</property>
+	</bean>
+	<!--3.1,6.1-->
+	<bean id="authenticationManager"
+		class="org.springframework.security.authentication.ProviderManager">
+		<property name="providers">
+			<list>
+				<!--从数据库中获取用户信息，包括用户名和密码。-->
+				<ref bean="daoAuthenticationProvider" />
+				<!-- 
+					验证某一之前验证过并且被记住的用户的身份。
+					这使得无需提示输入用户名和密码即自动登
+					录某一用户成为可能。
+				 -->
+				<ref bean="rememberMeAuthenticationProvider" />
+			</list>
+		</property>
+		<property name="authenticationEventPublisher" ref="authenticationEventPublisher"/>
+	</bean>
+	<!--3.1.1.1/6.1.1.1-->
+	<bean id="daoAuthenticationProvider"
+		class="org.springframework.security.authentication.dao.DaoAuthenticationProvider">
+		<!-- com.gewara.gptbs.service.impl.TbsAclServiceImpl-->
+		<!-- 
+			  通过Authentication.getPrincipal()的返回类型是Object，但很多情况下其返回的其实是一个UserDetails的实例。
+			 UserDetails是Spring Security中一个核心的接口。
+			  其中定义了一些可以获取用户名、密码、权限等与认证相关的信息的方法。
+		 -->
+		<property name="userDetailsService" ref="aclService" />
+		<property name="passwordEncoder" ref="passwordEncoder" />
+	</bean>
+	<!--3.1.1.2/6.1.1.2-->
+	<bean id="rememberMeAuthenticationProvider"
+		class="org.springframework.security.authentication.RememberMeAuthenticationProvider">
+		<property name="key" value="gbwebRocks" />
+	</bean>
+	<!--3.1.2/6.1.2-->
+	<!--AuthenticationEventPublisher-->
+	<bean id="authenticationEventPublisher" class="com.gewara.web.support.GewaAuthenticationEventPublisher" />
+	<!--3.1.1.1.2/6.1.1.1.2-->
+	<!-- PasswordEncoder -->
+	<bean id="passwordEncoder" class="com.gewara.web.support.GewaPasswordEncoder" />
+	
+	<bean id="loginService" class="com.gewara.web.component.LoginServiceImpl" >
+		<property name="cacheService" ref="cacheService" />
+		<property name="allowIpNum" value="30" />
+	</bean>
+	<!-- GenericFilterBean -->
+	<bean id="innerApiAuthFilter" class="com.gewara.gptbs.web.filter.InnerApiAuthFilter" />
+	<bean id="aclManager" class="com.gewara.service.impl.AclManagerImpl"/>
+	<bean id="messageFilter" class="com.gewara.gptbs.web.filter.MessageFilter" />
+	<bean id="attackTestFilter" class="com.gewara.web.filter.AttackTestFilter" />
+	<bean id="apiLimitFilter" class="com.gewara.gptbs.web.filter.ApiLimitFilter" />
+	<bean id="apiLimitFilter2" class="com.gewara.gptbs.web.filter.ApiLimitFilter2" />
+</beans>

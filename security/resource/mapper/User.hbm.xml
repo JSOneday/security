@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!DOCTYPE hibernate-mapping SYSTEM "http://www.hibernate.org/dtd/hibernate-mapping-3.0.dtd" >
+<hibernate-mapping>
+	<class name="com.oneday.entity.User" table="user" lazy="false">
+		<id name="id" type="long" column="id" >
+			<generator class="identity" />
+		</id>
+		<property name="uname" type="string" column="uname"/>
+		<property name="password" type="string" column="password"/>
+	</class>
+</hibernate-mapping>
